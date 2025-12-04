@@ -9,4 +9,3 @@ import { UploadController } from './upload.controller';
   exports: [UploadService],
 })
 export class UploadModule {}
-

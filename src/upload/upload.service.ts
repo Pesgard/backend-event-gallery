@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -111,7 +112,11 @@ export class UploadService {
   async uploadEventImage(
     file: Express.Multer.File,
     eventId: string,
-  ): Promise<{ image: UploadResult; thumbnail: UploadResult; metadata: ImageMetadata }> {
+  ): Promise<{
+    image: UploadResult;
+    thumbnail: UploadResult;
+    metadata: ImageMetadata;
+  }> {
     this.validateMimeType(file.mimetype);
     this.validateFileSize(file.size, 'image');
 
@@ -262,7 +267,11 @@ export class UploadService {
     this.validateMimeType(fileType);
     this.validateFileSize(
       fileSize,
-      uploadType === 'avatar' ? 'avatar' : uploadType === 'event-cover' ? 'cover' : 'image',
+      uploadType === 'avatar'
+        ? 'avatar'
+        : uploadType === 'event-cover'
+          ? 'cover'
+          : 'image',
     );
 
     const ext = this.getExtensionFromMimeType(fileType);
@@ -271,11 +280,15 @@ export class UploadService {
 
     switch (uploadType) {
       case 'event-cover':
-        if (!eventId) throw new BadRequestException('eventId required for event-cover');
+        if (!eventId) {
+          throw new BadRequestException('eventId required for event-cover');
+        }
         key = `events/${eventId}/cover.${ext}`;
         break;
       case 'image':
-        if (!eventId) throw new BadRequestException('eventId required for image');
+        if (!eventId) {
+          throw new BadRequestException('eventId required for image');
+        }
         key = `events/${eventId}/images/${id}.${ext}`;
         break;
       case 'avatar':
@@ -313,7 +326,10 @@ export class UploadService {
       return true;
     } catch (error: any) {
       // NotFound is acceptable - it means we can connect to S3
-      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      if (
+        error.name === 'NotFound' ||
+        error.$metadata?.httpStatusCode === 404
+      ) {
         return true;
       }
       return false;
