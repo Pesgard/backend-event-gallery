@@ -1,0 +1,150 @@
+# ================================
+# Deploy to AWS EC2 (Ubuntu)
+# ================================
+# Despliega automáticamente a 2 instancias EC2 con Ubuntu
+# cuando se hace push a la rama main
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # ================================
+  # Job 1: Migraciones de Base de Datos
+  # ================================
+  migrations:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm prisma generate
+
+      - name: Run Migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "🔄 Ejecutando migraciones..."
+          pnpm prisma migrate deploy
+          echo "✅ Migraciones completadas"
+
+  # ================================
+  # Job 2: Deploy a ambas EC2
+  # ================================
+  deploy:
+    name: Deploy to EC2 ${{ matrix.server }}
+    runs-on: ubuntu-latest
+    needs: migrations
+    strategy:
+      matrix:
+        server: [1, 2]
+      fail-fast: false
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Definir host
+        id: set-host
+        run: |
+          if [ "${{ matrix.server }}" = "1" ]; then
+            echo "host=${{ secrets.EC2_HOST_1 }}" >> $GITHUB_OUTPUT
+          else
+            echo "host=${{ secrets.EC2_HOST_2 }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Copiar código a EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ steps.set-host.outputs.host }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          source: "."
+          target: "/home/${{ secrets.EC2_USER }}/backend-event-gallery"
+          rm: true
+
+      - name: Build y Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ steps.set-host.outputs.host }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+          script: |
+            echo "🚀 Iniciando deploy en EC2 #${{ matrix.server }}..."
+            
+            cd /home/${{ secrets.EC2_USER }}/backend-event-gallery
+            
+            # Copiar archivo .env
+            if [ -f /home/${{ secrets.EC2_USER }}/app/.env ]; then
+              cp /home/${{ secrets.EC2_USER }}/app/.env .env
+            fi
+            
+            # Detener contenedor anterior
+            docker stop backend-event-gallery || true
+            docker rm backend-event-gallery || true
+            
+            # Build de la imagen
+            docker build -t backend-event-gallery:latest .
+            
+            # Ejecutar contenedor
+            docker run -d \
+              --name backend-event-gallery \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              --env-file .env \
+              backend-event-gallery:latest
+            
+            # Limpiar imágenes antiguas
+            docker image prune -af
+            
+            echo "✅ Deploy completado en EC2 #${{ matrix.server }}"
+
+  # ================================
+  # Job 3: Health Check
+  # ================================
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+
+    steps:
+      - name: Esperar inicio de servicios
+        run: sleep 30
+
+      - name: Verificar servidores
+        run: |
+          echo "🔍 Verificando health..."
+          
+          for host in "${{ secrets.EC2_HOST_1 }}" "${{ secrets.EC2_HOST_2 }}"; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" http://$host:3000/api/health --max-time 10 || echo "000")
+            if [ "$response" = "200" ]; then
+              echo "✅ $host está saludable"
+            else
+              echo "⚠️ $host respondió con código: $response"
+            fi
+          done
+          
+          echo "🎉 Deploy completado!"
+
