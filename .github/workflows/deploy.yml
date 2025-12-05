@@ -19,6 +19,8 @@ jobs:
   migrations:
     name: Run Migrations
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - name: Checkout código
@@ -41,8 +43,6 @@ jobs:
         run: pnpm prisma generate
 
       - name: Run Migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           echo "🔄 Ejecutando migraciones..."
           pnpm prisma migrate deploy
@@ -147,4 +147,3 @@ jobs:
           done
           
           echo "🎉 Deploy completado!"
-
