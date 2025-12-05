@@ -13,6 +13,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
@@ -20,7 +21,8 @@ RUN pnpm install --frozen-lockfile
 # Copy source code
 COPY . .
 
-# Generate Prisma client
+# Generate Prisma client (URL dummy solo para build)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
 RUN pnpm prisma generate
 
 # Build application
@@ -41,11 +43,13 @@ RUN addgroup -g 1001 -S nodejs && \
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
-# Generate Prisma client
+# Generate Prisma client (URL dummy solo para build)
+ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy?schema=public"
 RUN pnpm prisma generate
 
 # Copy built application
@@ -66,4 +70,3 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Start application
 CMD ["node", "dist/src/main.js"]
-
